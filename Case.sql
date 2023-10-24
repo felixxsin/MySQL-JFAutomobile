@@ -1,134 +1,296 @@
--- 1
-SELECT CarBrandOriginCountry, COUNT(DISTINCT rtd.CarID) AS [Times Rent]
-FROM MsBrand mb JOIN MsCar mc ON mb.CarBrandID = mc.CarBrandID JOIN RentalTransactionDetail rtd ON rtd.CarID = mc.CarID JOIN RentalTransactionHeader rth ON rth.RentalTransactionID = rtd.RentalTransactionID
-WHERE DATEPART(QUARTER, rth.StartRentalDate) = 2
+SELECT * FROM Staff
+
+SELECT ServiceTransactionID, STD.ServiceID, ServiceName, ServicePrice
+FROM ServiceTransactionDetail STD
+JOIN Service S
+ON STD.ServiceID = S.ServiceID
+
+--1.	Display CarBrandCountry and 
+--Times Rent (obtained from the total number of different car is rented in one transaction) 
+--and ordered in descending by Time Rent for every rental transaction 
+--that starts in quarter 2 of 2022.
+SELECT CarBrandOriginCountry,
+COUNT(DISTINCT RTD.CarID) AS [TIMES RENT]
+FROM CarBrand CB 
+JOIN
+Car C
+ON CB.CarBrandID = C.CarBrandID
+JOIN 
+RentalTransactionDetail RTD
+ON RTD.CarID = C.CarID
+JOIN
+RentalTransaction RT 
+ON RT.RentalTransactionID = RTD.RentalTransactionID 
+WHERE DATEPART(QUARTER, rt.RentalStartDate) = 2
 GROUP BY CarBrandOriginCountry
 ORDER BY COUNT(DISTINCT rtd.CarID)
 
--- 2
-SELECT mm.MechanicID, MechanicName, REPLACE(MechanicEmail, 'mail.com', 'mecha.com') AS [Email], CONCAT('IDR ', SUM(ms.ServicePrice)) AS [Total Earning]
-FROM MsMechanic mm JOIN ServiceTransactionHeader sth ON sth.MechanicID = mm.MechanicID JOIN ServiceTransactionDetail std ON std.ServiceTransactionID = sth.ServiceTransactionID JOIN MsService ms ON ms.ServiceID = std.ServiceID
-WHERE ms.ServicePrice > 300000
-GROUP BY mm.MechanicID, mm.MechanicName, mm.MechanicEmail
-HAVING SUM(ms.ServicePrice) >  3000000
 
--- 3
-SELECT TOP 5 rth.RentalTransactionID, SUM(rtd.CarDistanceTravelled) AS [Total Distance]
-FROM RentalTransactionHeader rth JOIN RentalTransactionDetail rtd ON rth.RentalTransactionID = rtd.RentalTransactionID JOIN MsCar mc ON rtd.CarID = mc.CarID
-WHERE DATEPART(YEAR, rth.StartRentalDate) = 2022 
-GROUP BY rth.RentalTransactionID
+--2.Display MechanicId, MechanicName, 
+--Email (obtained by replacing ‘mail.com’ with ‘mecha.com’), 
+--and Total Earning (obtained by adding ‘IDR ’ in front of the sum 
+--of the CarServicePrice) for every car service price that 
+--is greater than 300000 and the sum of car service price  
+--is greater than 3000000.
+
+
+SELECT M.MechanicID, MechanicName, 
+REPLACE(MechanicEmail, '@email.com', '@mecha.com')AS Email,
+CONCAT ('IDR ', SUM(s.ServicePrice)) AS [TotalEarnings]
+FROM Mechanic M JOIN ServiceTransaction ST
+ON M.MechanicID = ST.MechanicID
+JOIN ServiceTransactionDetail STD
+ON STD.ServiceTransactionID = ST.ServiceTransactionID
+JOIN Service S 
+ON S.ServiceID = STD.ServiceID
+--WHERE SUM(s.ServicePrice) > 300000
+GROUP BY M.MechanicID, M.MechanicName, M.MechanicEmail
+HAVING SUM(S.ServicePrice) > 300000
+AND SUM(S.ServicePrice) > 3000000
+ORDER BY TotalEarnings ASC;
+
+--3.Display top 5 TransactionId and Total Distance 
+--(obtained from sum of distance) in descending for 
+--every rental transaction that starts in 2022 
+--and have 2 different cars rent.
+
+SELECT TOP(5) RTD.RentalTransactionID,
+SUM(RTD.DistanceTraveled) AS TotalDistance
+FROM RentalTransaction RT 
+JOIN RentalTransactionDetail RTD
+ON RTD.RentalTransactionID = RT.RentalTransactionID
+WHERE DATEPART(YEAR, rt.RentalStartDate) = 2024
+GROUP BY RTD.RentalTransactionID
 HAVING COUNT(DISTINCT rtd.CarID) > 2
 
--- 4
-SELECT mc.CarID, CONCAT(mb.CarBrandName, '.', mc.CarName) AS [Car], CONCAT(LEFT(mb.CarBrandOriginCountry, 1), RIGHT(mb.CarBrandOriginCountry, 1)) AS [Country Code], COUNT( rtd.CarID)  AS [Time Rent]
-FROM MsCar mc JOIN MsBrand mb ON mc.CarBrandID = mb.CarBrandID JOIN RentalTransactionDetail rtd ON rtd.CarID = mc.CarID JOIN RentalTransactionHeader rth ON rth.RentalTransactionID = rtd.RentalTransactionID,
 
+--4.Display CarId, 
+--Car (obtained by adding “.” between CarBrandName and CarName), 
+--Country Code (obtained by adding the first and the last character of CarBrandCountry),
+--and Time Rent (obtained from the total number of different car rented in one transaction) 
+--for every car that has a higher engine capacity 
+--than the average engine capacity of every car and Time Rent more than one. 
+
+SELECT C.CarID,
+CONCAT(CarBrandName,' . ',CarName) AS CAR,
+CONCAT(LEFT(CarBrandOriginCountry,1),RIGHT(CarBrandOriginCountry,1)) AS CountryCode,
+COUNT(RTD.CarID) AS TimeRent
+FROM Car C
+JOIN CarBrand CB 
+ON C.CarBrandID = CB.CarBrandID
+JOIN RentalTransactionDetail RTD
+ON RTD.CarID = C.CarID,
 (
-	SELECT AVG(EngineCapacity) 'Average Engine Capacity'
-	FROM MsCar 
+	SELECT AVG(EngineCapacity) AS AverageEngine
+	FROM Car
 )subquery
-WHERE mc.EngineCapacity > subquery.[Average Engine Capacity] 
-GROUP BY mc.CarID, mb.CarBrandName,mc.CarName,  mb.CarBrandOriginCountry
-HAVING COUNT(rtd.CarID)  > 1
+WHERE c.EngineCapacity > subquery.AverageEngine
+GROUP BY C.CarID, CarBrandName,CarName, CarBrandOriginCountry, RTD.CarID
 
--- 5
-SELECT ServiceName, [Old Price] = ServicePrice, [New Price] = ServicePrice + (
- CASE 
-        WHEN x.TotalTimes < 5 THEN (ServicePrice * 0.05)
-        WHEN x.TotalTimes >= 5 AND TotalTimes < 10 THEN (ServicePrice * 0.1)
-  WHEN x.TotalTimes >= 10 THEN (ServicePrice * 0.15)
- END
-)
-FROM MsService ms, (
- SELECT ServiceID,  COUNT(DISTINCT svh.ServiceTransactionID) 'TotalTimes'
- FROM ServiceTransactionHeader svh JOIN ServiceTransactionDetail svt ON svh.ServiceTransactionID = svt.ServiceTransactionID
- GROUP BY ServiceID, YEAR(svh.TransactionDate), DATEPART(WEEKDAY, svh.TransactionDate)
- HAVING YEAR(svh.TransactionDate) = 2022 AND DATEPART(WEEKDAY, svh.TransactionDate) IN (2,3,4,5,6)
-)x
-WHERE x.ServiceID = ms.ServiceID
-
-
--- 6
-SELECT rth.RentalTransactionID, LOWER(mc.CustomerName) AS [Customer Name], FORMAT(rth.StartRentalDate, 'MM dd, yyyy') AS [Start Date], rtd.CarID, (rtd.CarDistanceTravelled * mca.CarPrice) AS [Transaction Price]
-FROM RentalTransactionHeader rth JOIN MsCustomer mc ON rth.CustomerID = mc.CustomerID JOIN RentalTransactionDetail rtd ON rth.RentalTransactionID = rtd.RentalTransactionID JOIN MsCar mca ON rtd.CarID = mca.CarID,(
-	SELECT AVG(rtd2.CarDistanceTravelled * mca2.CarPrice) 'AveragePrice'
-	FROM RentalTransactionDetail rtd2 JOIN MsCar mca2 ON rtd2.CarID = mca2.CarID JOIN RentalTransactionHeader rth2 ON rth2.RentalTransactionID = rtd2.RentalTransactionID
-	WHERE DATEDIFF(DAY, rth2.StartRentalDate, rth2.ReturnDate) < 7
-)SubQuery
-WHERE(rtd.CarDistanceTravelled * mca.CarPrice) > SubQuery.AveragePrice
-GROUP BY rth.RentalTransactionID, mc.CustomerName, rth.StartRentalDate, rtd.CarID, rtd.CarDistanceTravelled, mca.CarPrice
-
--- 7
-SELECT STUFF(ms.StaffID, 1, CHARINDEX('-', ms.StaffID, 0)-1, 'Employee')  AS [Staff ID], SUBSTRING(ms.StaffName, 1, CHARINDEX(' ', ms.StaffName, 1)) AS [First Name], COUNT(sth.ServiceTransactionID) AS [Total Handled Transaction] , SUM(x.ServiceFee) AS [Gained Service Fee]
-FROM MsStaff ms JOIN ServiceTransactionHeader sth ON sth.StaffID = ms.StaffID JOIN ServiceTransactionDetail std ON std.ServiceTransactionID = sth.ServiceTransactionID,
-
+--5.Display CarServiceName, 
+--Old Price (obtained from CarServicePrice), 
+--and New Price (obtained from CarServicePrice + AdditionalPrice). 
+--Additional price is determined by how many times a service is used on weekdays of 2022. 
+--Show the data by the biggest price increase in descending.
+--(alias subquery)
+SELECT ServiceName, 
+ServicePrice AS OldPrice, 
+ServicePrice + (
+CASE
+	WHEN X.TotalTimes < 5 THEN (ServicePrice * 0.05)
+	WHEN X.TotalTimes >= 5 AND TotalTimes < 10 THEN (ServicePrice * 0.10)
+	WHEN X.TotalTimes >=10 THEN (ServicePrice * 0.15)
+END 
+) AS NewPrice
+FROM Service S,
 (
-	SELECT mss2.StaffID 'StaffID', 0.05 * ms2.ServicePrice'ServiceFee'
-	FROM MsService ms2 JOIN  ServiceTransactionDetail std2 ON ms2.ServiceID = std2.ServiceID JOIN ServiceTransactionHeader sth2 ON sth2.ServiceTransactionID = std2.ServiceTransactionID JOIN MsStaff mss2 ON mss2.StaffID = sth2.StaffID
+	SELECT STD.ServiceID, COUNT(*) AS TotalTimes
+	FROM ServiceTransaction ST
+	JOIN ServiceTransactionDetail STD
+	ON ST.ServiceTransactionID = STD.ServiceTransactionID
+	WHERE YEAR(ST.ServiceTransactionDate) = 2024 
+	AND DATEPART(WEEKDAY, ST.ServiceTransactionDate) IN (2,3,4,5,6)
+	GROUP BY STD.ServiceID
+)X
+WHERE X.ServiceID = S.ServiceID
+ORDER BY 
+(ServicePrice +(
+CASE
+	WHEN X.TotalTimes < 5 THEN (ServicePrice * 0.05)
+	WHEN X.TotalTimes >= 5 AND TotalTimes < 10 THEN (ServicePrice * 0.10)
+	WHEN X.TotalTimes >=10 THEN (ServicePrice * 0.15)
+END
+)) - ServicePrice DESC;
 
-)x
-WHERE ms.StaffID = x.StaffID AND ms.StaffGender = 'Male' 
-GROUP BY ms.StaffID, ms.StaffName
-HAVING  COUNT(sth.ServiceTransactionID) > 4
-
-
--- 8
-SELECT CustomerName, REPLACE(CustomerPhoneNumber, '+62', 'IDN- ') AS [Customer Phone], 	 SUM(y.RentalTransactionPrice) AS [Total Spent], x.Max AS [Maximum Spent], (
-	CASE 
-        WHEN  SUM(y.RentalTransactionPrice) < 3000000 THEN 'Member'
-        WHEN SUM(y.RentalTransactionPrice) >= 3000000 AND SUM(y.RentalTransactionPrice) < 5000000 THEN 'Silver Member'
-		WHEN SUM(y.RentalTransactionPrice) >= 5000000 THEN 'Gold Member'
- END
-
-)
-FROM MsCustomer mc, (
-	SELECT mcc2.CustomerID 'CustomerID', MAX(rdt2.CarDistanceTravelled * mc2.CarPrice) 'Max'
-	FROM MsCar mc2 JOIN RentalTransactionDetail rdt2 ON mc2.CarID= rdt2.CarID JOIN RentalTransactionHeader rth2 ON rth2.RentalTransactionID = rdt2.RentalTransactionID  JOIN MsCustomer mcc2 ON mcc2.CustomerID = rth2.CustomerID
-	GROUP BY mcc2.CustomerID, rdt2.CarDistanceTravelled, mc2.CarPrice
-)x,(
-	SELECT mcc2.CustomerID 'CustomerID', rdt2.CarDistanceTravelled * mc2.CarPrice 'RentalTransactionPrice'
-	FROM MsCar mc2 JOIN RentalTransactionDetail rdt2 ON mc2.CarID= rdt2.CarID JOIN RentalTransactionHeader rth2 ON rth2.RentalTransactionID = rdt2.RentalTransactionID  JOIN MsCustomer mcc2 ON mcc2.CustomerID = rth2.CustomerID
-	GROUP BY mcc2.CustomerID, rdt2.CarDistanceTravelled, mc2.CarPrice
-
-)y
-WHERE x.Max> 1500000 AND CustomerGender = 'Male' AND mc.CustomerID  = y.CustomerID AND mc.CustomerID = x.CustomerID
-
-
-
-GROUP BY CustomerName, CustomerPhoneNumber, x.Max
-
-
-
-
--- 9
-CREATE VIEW ViewMinAndMaxDistance
-AS
-SELECT CONCAT(x.Min, ' km') AS [Min Distance], CONCAT(y.Max, ' km') AS [Max Distance]
+-----------------ALTERNATIVE ANSWER NO.5------------------------------------------
+SELECT
+    ServiceName,
+    OldPrice,
+    NewPrice
 FROM (
-	SELECT MIN(rtd.CarDistanceTravelled) 'Min'
-	FROM RentalTransactionDetail rtd JOIN RentalTransactionHeader rth ON rth.RentalTransactionID = rtd.RentalTransactionID
-	WHERE DATEPART(QUARTER, RTH.StartRentalDate) = 1 AND YEAR(rth.StartRentalDate) = 2022
+    SELECT
+        S.ServiceName AS ServiceName,
+        S.ServicePrice AS OldPrice,
+        S.ServicePrice + (
+            CASE
+                WHEN X.TotalTimes < 5 THEN (S.ServicePrice * 0.05)
+                WHEN X.TotalTimes >= 5 AND X.TotalTimes < 10 THEN (S.ServicePrice * 0.10)
+                WHEN X.TotalTimes >= 10 THEN (S.ServicePrice * 0.15)
+            END
+        ) AS NewPrice
+    FROM Service AS S
+    JOIN (
+        SELECT
+            STD.ServiceID,
+            COUNT(*) AS TotalTimes
+        FROM ServiceTransaction AS ST
+        JOIN ServiceTransactionDetail AS STD ON ST.ServiceTransactionID = STD.ServiceTransactionID
+        WHERE YEAR(ST.ServiceTransactionDate) = 2024 
+        AND DATEPART(WEEKDAY, ST.ServiceTransactionDate) IN (2, 3, 4, 5, 6)
+        GROUP BY STD.ServiceID
+    ) AS X ON S.ServiceID = X.ServiceID
+) AS Result
+ORDER BY (NewPrice - OldPrice) DESC;
+-----------------END ALTERNATIVE ANSWER NO.5------------------------------------------
 
-)x,(
-	SELECT MAX(rtd.CarDistanceTravelled) 'Max'
-	FROM RentalTransactionDetail rtd JOIN RentalTransactionHeader rth ON rth.RentalTransactionID = rtd.RentalTransactionID
-	WHERE DATEPART(QUARTER, RTH.StartRentalDate) = 1 AND YEAR(rth.StartRentalDate) = 2022
+--6.Display TransactionId, 
+--Customer Name (obtained from CustomerName in lowercase format), 
+--Start Date (obtained from StartDate in “mm dd, yyyy” format), 
+--CarId, and Transaction Price (obtained from total price multiply by distance) 
+--for every transaction that has a higher Transaction Price 
+--than the average Transaction Price of each car that is returned within 7 days.
+--(alias subquery)
 
-)y
+SELECT RT.RentalTransactionID, 
+LOWER(CustomerName) AS CustomerName,
+FORMAT(RentalStartDate,'dd-MM-yyyy') AS StartDate,
+RTD.CarID,
+(RTD.DistanceTraveled * CA.CarPrice) AS TransactionPrice
+FROM RentalTransaction RT
+JOIN Customer C 
+ON RT.CustomerID = C.CustomerID
+JOIN RentalTransactionDetail RTD
+ON RT.RentalTransactionID = RTD.RentalTransactionID
+JOIN Car CA
+ON CA.CarID = RTD.CarID,
+(
+	SELECT AVG(RTD2.DistanceTraveled * CA2.CarPrice) AS AveragePrice
+	FROM RentalTransactionDetail rtd2 
+	JOIN Car CA2 
+	ON CA2.CarID = rtd2.CarID
+	JOIN RentalTransaction RT2
+	ON RT2.RentalTransactionID = rtd2.RentalTransactionID
+	WHERE DATEDIFF(DAY,RT2.RentalStartDate, RT2.RentalReturnDate)<7
+)X
+WHERE (RTD.DistanceTraveled*CA.CarPrice) > X.AveragePrice
+GROUP BY RT.RentalTransactionID, C.CustomerName, RT.RentalStartDate, 
+RTD.CarID,RTD.DistanceTraveled, CA.CarPrice
 
--- 10
-CREATE VIEW ViewAverageShortRentalEarning
-AS
-SELECT CONCAT('Rp. ', x.Average, '.-') AS [ViewAverageShortRentalEarning]
-FROM (
-	SELECT AVG(mc.CarPrice * rtd.CarDistanceTravelled) 'Average'
-	FROM MsCar mc JOIN RentalTransactionDetail rtd ON mc.CarID = rtd.CarID JOIN MsBrand mb ON mc.CarBrandID = mb.CarBrandID JOIN RentalTransactionHeader rth ON rth.RentalTransactionID = rtd.RentalTransactionID,(
-		SELECT MIN(DATEDIFF(DAY, rth2.StartRentalDate, rth2.ReturnDate))'Min'
-		FROM RentalTransactionHeader rth2
+--7. Display Staff ID (obtained by replacing characters before ‘-‘ 
+--with “Employee”), 
+--First Name (obtained from the first word before space in StaffName), 
+--Total Handled Transaction (obtained from total number of service transactions), 
+--and Gained Service Fee (obtained from the sum of service fee per transaction 
+--(Transaction service fee is gained from the sum of 5% CarServicePrice)) 
+--for every staff whose gender is male and has handled at least 4 service transactions. 
+--(alias subquery)
+
+SELECT DISTINCT REPLACE(S.StaffID,LEFT(S.StaffID,2),'Employee') AS Employee,
+SUBSTRING(StaffName,1,CHARINDEX(' ',StaffName)-1) AS FirstName,
+COUNT(ST.ServiceTransactionID) AS TotalHandleTransaction,
+SUM(X.ServiceCommission) as GainedServiceFee
+FROM Staff S
+JOIN ServiceTransaction ST
+ON S.StaffID = ST.StaffID,
+(
+	SELECT ST2.StaffID , 0.05 * Se.ServicePrice AS ServiceCommission
+	FROM ServiceTransaction ST2
+	JOIN ServiceTransactionDetail STD2
+	ON ST2.ServiceTransactionID = STD2.ServiceTransactionID
+	JOIN Service Se
+	ON Se.ServiceID = STD2.ServiceID
+	JOIN Staff S2
+	ON S2.StaffID = ST2.StaffID
+)X
+WHERE S.StaffID = X.StaffID AND S.StaffGender = 'Male'
+GROUP BY S.StaffID, S.StaffName, ST.ServiceTransactionID
+
+--8.Display CustomerName, 
+--Customer Phone (obtained by replacing “+62” with “IDN - ”), 
+--Total Spent (obtained from the sum of rental transaction price 
+--(rental transaction price obtained by multiplying car price and distance)), 
+--Maximum Spent in 1 Transaction (obtained from the highest rental transaction price 
+--(rental transaction price obtained by multiplying car price and distance)), 
+--and Membership Status for every male customer 
+--who has a highest rental transaction price higher than 1500000. 
+--(alias subquery)
+
+SELECT CustomerName,
+REPLACE(CustomerPhone,'+62','IDN - ') AS CustomerPhone,
+X.TotalSpent AS TotalSpent,
+X.MaxSpent,
+(
+	CASE
+		WHEN X.TotalSpent < 3000000 THEN 'Member'
+		WHEN X.TotalSpent >= 3000000 AND X.TotalSpent < 5000000THEN 'Silver Member'
+		WHEN X.TotalSpent >= 5000000 THEN 'Gold Member'
+	END
+) AS MembershipStatus
+FROM Customer C
+JOIN RentalTransaction RT
+ON RT.CustomerID = C.CustomerID
+JOIN RentalTransactionDetail RTD
+ON RTD.RentalTransactionID = RT.RentalTransactionID,
+(
+SELECT 
+RT2.CustomerID,SUM(CarPrice * DistanceTraveled) AS TotalSpent, 
+MAX(CarPrice * DistanceTraveled) AS MaxSpent
+FROM Car C2 
+JOIN RentalTransactionDetail RTD2
+ON C2.CarID = RTD2.CarID
+JOIN RentalTransaction RT2
+ON RT2.RentalTransactionID = RTD2.RentalTransactionID
+GROUP BY RT2.CustomerID
+)X
+WHERE X.CustomerID = RT.CustomerID AND CustomerGender = 'Male' AND X.MaxSpent > 1500000
+GROUP BY CustomerName, CustomerPhone, X.TotalSpent, X.MaxSpent
 
 
+--9.Create a view named ViewMinAndMaxDistance that shows 
+--Min Distance (obtained from adding “ km”  after the minimum distance traveled in a rental transaction), 
+--Max Distance (obtained from adding “ km”  after the maximum distance traveled in a rental transaction) 
+--for rental transaction that starts in the first quarter of 2022.
+CREATE VIEW [ViewMinAndMaxDistance] AS
+SELECT CONCAT('KM',MIN(DistanceTraveled)) AS MinDistance,
+CONCAT('KM',MAX(DistanceTraveled)) AS MaxDistance
+FROM RentalTransaction RT 
+JOIN RentalTransactionDetail RTD
+ON RT.RentalTransactionID = RTD.RentalTransactionID
+WHERE DATEPART(QUARTER,RT.RentalStartDate) = 1
+GO
+
+--10.Create a view named ViewAverageShortRentalEarning that display 
+--Average Earning (obtained by adding “Rp. ” before the average of rental price multiply by quantity and “.-”
+--after the average rental price) for every car that originates from Japan 
+--and has a rental duration less than equals to the minimum rental duration added by one 
+--in rental transaction.
+CREATE VIEW [ViewAverageShortRentalEarning] AS
+SELECT CONCAT('Rp ', x.Average, '.-') AS ViewAverageShortRentalEarning
+FROM
+(
+SELECT AVG(DistanceTraveled*CarPrice) AS Average
+FROM RentalTransactionDetail RTD
+JOIN Car C ON
+RTD.CarID = C.CarID
+JOIN CarBrand CB
+ON CB.CarBrandID = C.CarBrandID
+JOIN RentalTransaction RT
+ON RT.RentalTransactionID = RTD.RentalTransactionID,
+	(
+		SELECT MIN(DATEDIFF(DAY, RT2.RentalStartDate, RT2.RentalReturnDate)) AS Minimal
+		FROM RentalTransaction RT2
 	)y
-	WHERE mb.CarBrandOriginCountry ='Japan' AND DATEDIFF(DAY, rth.StartRentalDate, rth.ReturnDate) <= y.Min+1
-
+WHERE CB.CarBrandOriginCountry = 'JAPAN' AND DATEDIFF(DAY,RT.RentalStartDate, RT.RentalReturnDate) <= Y.Minimal+1
 )x
+
 
